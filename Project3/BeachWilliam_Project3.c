@@ -10,7 +10,7 @@ CDA4102 - Project 3 - Cache Memory in C
 /*Cache = array of sets*/
 
 //m = bits per address --> i.e. 32 bit, 64 bit, etc...
-//c = total cache size --> s * e * b
+//c = total cache size --> c = s * e * b
 //e = lines per set    --> 2-way set associative (2 lines per set), n-way set associative (n lines per set)
 //b = bytes of data block per line --> m / 8 bits = bytes per data block in each line
 //s = cache sets       --> c / (e * b)
@@ -34,9 +34,20 @@ type: unified/splitl/splitd     write-back/write-through    write allocate/write
 #include <string.h>
 #include <getopt.h>
 
+struct simulator{
+    u_int64_t cache_size;
+    u_int64_t block_size;
+    u_int16_t num_lines;
+    char *cache_type;
+    char *write_style;
+    char *allocation;
+};
+
 
 
 int main(int argc, char *argv[]){
+    
+
     int option;
     while ((option = getopt(argc, argv, "c:b:e:t:w:a:")) != -1){
 
