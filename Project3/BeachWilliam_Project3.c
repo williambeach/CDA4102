@@ -1,9 +1,7 @@
 /*
 *
-*
 William Beach
 CDA4102 - Project 3 - Cache Memory in C
-*
 *
 */
 
@@ -17,6 +15,12 @@ CDA4102 - Project 3 - Cache Memory in C
 //t = tag bits         --> m - (bb + sb)
 //sb = set index bits   --> logbase2(s)
 //bb = block offset bits --> logbase2(b)
+
+//0 = data load
+//1 = data store
+//2 = instruction load
+
+//unified cache contains both instructions and data
 
 //command-line argument format:
 
@@ -44,18 +48,25 @@ struct settings{
   char *allocation;
 }cache_settings;
 
+struct address{
+  char *tag;
+  char *set;
+  char *offset;
+}cache_address;
 
+FILE *trace_file;
 
 
 void cacheType(char *arr);
 void writeType(char *arr);
 void allocationType(char *arr);
+void parse_trace_file();
+void hex_to_binary(char *hex);
+
+
 
 
 int main(int argc, char *argv[]){
-  const char hex_to_binary[15] = {"0000", "0001", "0010", "0011", "0100", "0101", "0110", "0111", "1000", "1001", "1010", "1011", "1100", "1101",
-  "1110", "1111"};
-  const char hex_numbers = "0123456789abcdef";
   int option;
   while ((option = getopt(argc, argv, "c:b:e:t:w:a:")) != -1){
       switch (option){
@@ -128,4 +139,25 @@ void allocationType(char *arr){
     }
 }
 
+void parse_trace_file(){
+  char buffer[100];
+  char *reference;
+  char *hex;
+  int length;
+  trace_file = fopen("trace.txt", "r");
+  while (fgets(buffer, sizeof(buffer), trace_file) != NULL){
+    reference = strtok(buffer, " ");
+    hex = strtok(NULL, " ");
+    
+    
+    
+  }
 
+}
+
+void hex_to_binary(char *hex){
+  const char hex_to_binary[15] = {"0000", "0001", "0010", "0011", "0100", "0101", "0110", 
+  "0111", "1000", "1001", "1010", "1011", "1100", "1101", "1110", "1111"};
+  const char hex_numbers = "0123456789abcdef";
+
+}
