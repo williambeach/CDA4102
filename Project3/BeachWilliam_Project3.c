@@ -29,8 +29,8 @@ CDA4102 - Project 3 - Cache Memory in C
 total cache size                       block size                    associativity  
 -c <cache size>                     -b <block size>              -e <number of lines>   
 
-type: unified/split l and d     write-back/write-through     write allocate/write no allocate
-    -t [u/sld]                        -w [wb/wt]                     -a [wa/wna]
+type: unified/split i and d     write-back/write-through     write allocate/write no allocate
+    -t [u/sid]                        -w [wb/wt]                     -a [wa/wna]
 
 */
 
@@ -46,9 +46,14 @@ struct settings{
   char *cache_type;
   char *write_style;
   char *allocation;
+  int cache_sets;
 }cache_settings;
 
 struct address{
+  int tag_bits;
+  int set_index_bits;
+  int block_offset_bits;
+  int valid;
   char *tag;
   char *set;
   char *offset;
@@ -56,7 +61,7 @@ struct address{
 
 FILE *trace_file;
 
-
+void parse_command_line(int argc, char *argv[]);
 void cacheType(char *arr);
 void writeType(char *arr);
 void allocationType(char *arr);
@@ -67,6 +72,11 @@ void hex_to_binary(char *hex);
 
 
 int main(int argc, char *argv[]){
+  parse_command_line(argc, argv);
+}
+
+
+void parse_command_line(int argc, char *argv[]){
   int option;
   while ((option = getopt(argc, argv, "c:b:e:t:w:a:")) != -1){
       switch (option){
@@ -100,14 +110,16 @@ int main(int argc, char *argv[]){
               exit(1);
       }
     }
-    //
+    //calculate cache sets
+    cache_settings.cache_sets = cache_settings.cache_size / (cache_settings.num_lines * cache_settings.block_size);
 }
+
 
 void cacheType(char *arr){
   if (strcmp(arr, "u") == 0){
     printf("unified cache selected\n");
   } else if (strcmp(arr, "sld") == 0){
-    printf("split-ld cache selected\n");
+    printf("split-id cache selected\n");
   } else{
     printf("invalid cache type selected\n");
     printf("aborting program\n");
@@ -156,8 +168,8 @@ void parse_trace_file(){
 }
 
 void hex_to_binary(char *hex){
-  const char hex_to_binary[15] = {"0000", "0001", "0010", "0011", "0100", "0101", "0110", 
+  const char hex_to_binary[16] = {"0000", "0001", "0010", "0011", "0100", "0101", "0110", 
   "0111", "1000", "1001", "1010", "1011", "1100", "1101", "1110", "1111"};
-  const char hex_numbers = "0123456789abcdef";
+  const char hex_numbers[] = "0123456789abcdef";
 
 }
