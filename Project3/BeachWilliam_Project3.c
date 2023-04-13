@@ -38,6 +38,7 @@ type: unified/split i and d     write-back/write-through     write allocate/writ
 #include <string.h>
 #include <getopt.h>
 #include <stdlib.h>
+#include <math.h>
 
 struct settings{
   unsigned int cache_size;
@@ -47,17 +48,27 @@ struct settings{
   char *write_style;
   char *allocation;
   int cache_sets;
-}cache_settings;
-
-struct address{
-  int tag_bits;
   int set_index_bits;
   int block_offset_bits;
-  int valid;
+  int tag_bits;
+}cache_settings;
+
+
+struct address{
   char *tag;
   char *set;
   char *offset;
-}cache_address;
+};
+
+struct line{
+  unsigned int valid_bit;
+  unsigned int dirty_bit;
+  struct address cache_address;
+};
+
+struct set{
+  struct line line_array[1];
+};
 
 FILE *trace_file;
 
@@ -65,16 +76,17 @@ void parse_command_line(int argc, char *argv[]);
 void cacheType(char *arr);
 void writeType(char *arr);
 void allocationType(char *arr);
-void parse_trace_file();
-void hex_to_binary(char *hex);
-
-
+void initialize_cache();
+void parse_trace_line();
+void hex_to_binary(char *hex, char *binary_address);
 
 
 int main(int argc, char *argv[]){
   parse_command_line(argc, argv);
+  initialize_cache();
+  parse_trace_line();
+  return 0;
 }
-
 
 void parse_command_line(int argc, char *argv[]){
   int option;
@@ -111,8 +123,18 @@ void parse_command_line(int argc, char *argv[]){
       }
     }
     //calculate cache sets
-    cache_settings.cache_sets = cache_settings.cache_size / (cache_settings.num_lines * cache_settings.block_size);
+  cache_settings.cache_sets = cache_settings.cache_size / (cache_settings.num_lines * cache_settings.block_size);
+  cache_settings.set_index_bits = log2(cache_settings.cache_sets);
+  cache_settings.block_offset_bits = log2(cache_settings.block_size);
+  cache_settings.tag_bits = 32 - cache_settings.block_offset_bits - cache_settings.set_index_bits;
 }
+
+void initialize_cache(){
+  if (cache_settings.cache_type = "u"){
+    struct set set_array[cache_settings.cache_sets];
+  } 
+}
+
 
 
 void cacheType(char *arr){
@@ -151,8 +173,9 @@ void allocationType(char *arr){
     }
 }
 
-void parse_trace_file(){
-  char buffer[100];
+void parse_trace_line(){
+  char binary_address[50] = {'\0'};
+  char buffer[50];
   char *reference;
   char *hex;
   int length;
@@ -160,16 +183,24 @@ void parse_trace_file(){
   while (fgets(buffer, sizeof(buffer), trace_file) != NULL){
     reference = strtok(buffer, " ");
     hex = strtok(NULL, " ");
-    
-    
-    
+    hex_to_binary(hex, binary_address);
+    printf("%s\n", binary_address);
+    memset(binary_address, '\0', sizeof binary_address);
   }
-
 }
 
-void hex_to_binary(char *hex){
-  const char hex_to_binary[16] = {"0000", "0001", "0010", "0011", "0100", "0101", "0110", 
-  "0111", "1000", "1001", "1010", "1011", "1100", "1101", "1110", "1111"};
-  const char hex_numbers[] = "0123456789abcdef";
-
+void hex_to_binary(char *hex, char *binary_address){
+  char temp;
+  char *target;
+  int index;
+  int i;
+  int address_bits = (strlen(hex) - 1) * 4;
+  char *hex_to_binary[16] = {"0000", "0001", "0010", "0011", "0100", "0101", "0110", "0111", "1000", "1001", "1010", "1011", "1100", "1101", "1110", "1111"};
+  char hex_numbers[] = "0123456789abcdef";
+  for (i=0;i<strlen(hex)-1;i++){
+    temp = hex[i];
+    target = strchr(hex_numbers, temp);
+    index = (int)(target - hex_numbers);
+    strcat(binary_address, hex_to_binary[index]);
+  }
 }
