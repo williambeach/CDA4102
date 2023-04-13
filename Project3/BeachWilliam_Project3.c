@@ -81,12 +81,17 @@ void parse_trace_line();
 void hex_to_binary(char *hex, char *binary_address);
 
 
+
+
 int main(int argc, char *argv[]){
   parse_command_line(argc, argv);
   initialize_cache();
   parse_trace_line();
   return 0;
 }
+
+
+
 
 void parse_command_line(int argc, char *argv[]){
   int option;
@@ -175,6 +180,7 @@ void allocationType(char *arr){
 
 void parse_trace_line(){
   char binary_address[50] = {'\0'};
+  char copy_of_binary[50] = {"0,0,0,0"};
   char buffer[50];
   char *reference;
   char *hex;
@@ -184,8 +190,13 @@ void parse_trace_line(){
     reference = strtok(buffer, " ");
     hex = strtok(NULL, " ");
     hex_to_binary(hex, binary_address);
+    if ((int)strlen(binary_address) == 24){
+      strcat(copy_of_binary, binary_address);
+    }
     printf("%s\n", binary_address);
     memset(binary_address, '\0', sizeof binary_address);
+    memset(copy_of_binary, '\0', sizeof copy_of_binary);
+  
   }
 }
 
