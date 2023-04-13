@@ -79,6 +79,7 @@ void allocationType(char *arr);
 void initialize_cache();
 void parse_trace_line();
 void hex_to_binary(char *hex, char *binary_address);
+void search_unified_cache(char *binary_address);
 
 
 
@@ -89,9 +90,6 @@ int main(int argc, char *argv[]){
   parse_trace_line();
   return 0;
 }
-
-
-
 
 void parse_command_line(int argc, char *argv[]){
   int option;
@@ -135,8 +133,14 @@ void parse_command_line(int argc, char *argv[]){
 }
 
 void initialize_cache(){
-  if (cache_settings.cache_type = "u"){
+  int i;
+  if (strcmp(cache_settings.cache_type, "u") == 0){
     struct set set_array[cache_settings.cache_sets];
+    for (i=0;i<256;i++){
+      set_array[i].line_array[0].valid_bit = 0;
+    }
+  } else{
+    //initialize split i-d cache valid bit and dirty bit
   } 
 }
 
@@ -180,7 +184,7 @@ void allocationType(char *arr){
 
 void parse_trace_line(){
   char binary_address[50] = {'\0'};
-  char copy_of_binary[50] = {"0,0,0,0"};
+  char copy_of_binary[50] = {'0', '0', '0', '0', '0', '0', '0', '0'};
   char buffer[50];
   char *reference;
   char *hex;
@@ -192,10 +196,13 @@ void parse_trace_line(){
     hex_to_binary(hex, binary_address);
     if ((int)strlen(binary_address) == 24){
       strcat(copy_of_binary, binary_address);
+      memset(binary_address, '\0', sizeof binary_address);
+      strcpy(binary_address, copy_of_binary);
     }
-    printf("%s\n", binary_address);
+    //printf("%s\n", binary_address);
     memset(binary_address, '\0', sizeof binary_address);
     memset(copy_of_binary, '\0', sizeof copy_of_binary);
+    strcpy(copy_of_binary, "00000000");
   
   }
 }
@@ -214,4 +221,8 @@ void hex_to_binary(char *hex, char *binary_address){
     index = (int)(target - hex_numbers);
     strcat(binary_address, hex_to_binary[index]);
   }
+}
+
+void search_unified_cache(char *binary_address){
+  
 }
