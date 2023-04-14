@@ -27,7 +27,7 @@ CDA4102 - Project 3 - Cache Memory in C
 /*
 
 total cache size                       block size                    associativity  
--c <cache size>                     -b <block size>              -e <number of lines>   
+-c <cache size>                     -b <block size>              -e <number of lines>   //up to 4-way
 
 type: unified/split i and d     write-back/write-through     write allocate/write no allocate
     -t [u/sid]                        -w [wb/wt]                     -a [wa/wna]
@@ -66,9 +66,29 @@ struct line{
   struct address cache_address;
 };
 
-struct set{
-  struct line line_array[1];
+struct set_direct_mapped{
+  struct line line1;
 };
+
+struct set_2_way{
+  struct line line1;
+  struct line line2;
+};
+
+struct set_3_way{
+  struct line line1;
+  struct line line2;
+  struct line line3;
+};
+
+struct set_4_way{
+  struct line line1;
+  struct line line2;
+  struct line line3;
+  struct line line4;
+};
+
+
 
 FILE *trace_file;
 
@@ -76,18 +96,30 @@ void parse_command_line(int argc, char *argv[]);
 void cacheType(char *arr);
 void writeType(char *arr);
 void allocationType(char *arr);
-void initialize_cache();
-void parse_trace_line();
+void initialize_cache(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr);
+void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr);
 void hex_to_binary(char *hex, char *binary_address);
-void search_unified_cache(char *binary_address);
+void binary_to_cache_bits(char *binary_address, char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4, int *hits, int *misses, int *memory_accesses);
+void uni_write_through_no_allocate(char *tag, char *index, char *offset, char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4, int *hits, int *misses, int *memory_accesses);
+void search_split_cache(char *tag, char *index, char *offset);
+int binary_to_decimal(char *index); //for converting binary set index to decimal set array index
 
 
 
 
 int main(int argc, char *argv[]){
+  struct set_direct_mapped set_array1[cache_settings.cache_sets];
+  struct set_direct_mapped *ptr1 = set_array1; 
+  struct set_2_way set_array2[cache_settings.cache_sets];
+  struct set_2_way *ptr2 = set_array2;
+  struct set_3_way set_array3[cache_settings.cache_sets];
+  struct set_3_way *ptr3 = set_array3;
+  struct set_4_way set_array4[cache_settings.cache_sets];
+  struct set_4_way *ptr4 = set_array4;
+  
   parse_command_line(argc, argv);
-  initialize_cache();
-  parse_trace_line();
+  initialize_cache(ptr1, ptr2, ptr3, ptr4);
+  parse_trace_line(ptr1, ptr2, ptr3, ptr4);
   return 0;
 }
 
@@ -132,15 +164,40 @@ void parse_command_line(int argc, char *argv[]){
   cache_settings.tag_bits = 32 - cache_settings.block_offset_bits - cache_settings.set_index_bits;
 }
 
-void initialize_cache(){
+//handles associativity up to n=4
+void initialize_cache(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4){ 
   int i;
   if (strcmp(cache_settings.cache_type, "u") == 0){
-    struct set set_array[cache_settings.cache_sets];
-    for (i=0;i<256;i++){
-      set_array[i].line_array[0].valid_bit = 0;
+    if (cache_settings.num_lines == 1){
+      for (i=0; i<cache_settings.cache_sets;i++){
+        ptr1[i].line1.valid_bit = 0;
+        
+      }
+    } else if (cache_settings.num_lines == 2){
+        for (i=0; i<cache_settings.cache_sets;i++){
+          ptr2[i].line1.valid_bit = 0;
+          ptr2[i].line2.valid_bit = 0;
+        }
+    } else if (cache_settings.num_lines == 3){
+        for (i=0; i<cache_settings.cache_sets;i++){
+          ptr3[i].line1.valid_bit = 0;
+          ptr3[i].line2.valid_bit = 0;
+          ptr3[i].line3.valid_bit = 0;
+        }
+    } else if (cache_settings.num_lines == 4){
+        for (i=0; i<cache_settings.cache_sets;i++){
+          ptr4[i].line1.valid_bit = 0;
+          ptr4[i].line2.valid_bit = 0;
+          ptr4[i].line3.valid_bit = 0;
+          ptr4[i].line4.valid_bit = 0;
+        }
+    } else {
+      printf("associativity > 4\n");
+      printf("exiting program\n");
+      exit(1);
     }
   } else{
-    //initialize split i-d cache valid bit and dirty bit
+    //initialize split i-d cache with valid bit and dirty bit
   } 
 }
 
@@ -182,7 +239,16 @@ void allocationType(char *arr){
     }
 }
 
-void parse_trace_line(){
+void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4){
+  int *phits;
+  int *pmisses;
+  int *pmemory_accesses;
+  int hits = 0;
+  int misses = 0;
+  int memory_accesses = 0;
+  phits = &hits;
+  pmisses = &misses;
+  pmemory_accesses = &memory_accesses;
   char binary_address[50] = {'\0'};
   char copy_of_binary[50] = {'0', '0', '0', '0', '0', '0', '0', '0'};
   char buffer[50];
@@ -199,12 +265,12 @@ void parse_trace_line(){
       memset(binary_address, '\0', sizeof binary_address);
       strcpy(binary_address, copy_of_binary);
     }
-    //printf("%s\n", binary_address);
+    binary_to_cache_bits(binary_address, reference, ptr1, ptr2, ptr3, ptr4, phits, pmisses, pmemory_accesses);
     memset(binary_address, '\0', sizeof binary_address);
     memset(copy_of_binary, '\0', sizeof copy_of_binary);
     strcpy(copy_of_binary, "00000000");
-  
   }
+  
 }
 
 void hex_to_binary(char *hex, char *binary_address){
@@ -223,6 +289,55 @@ void hex_to_binary(char *hex, char *binary_address){
   }
 }
 
-void search_unified_cache(char *binary_address){
-  
+void binary_to_cache_bits(char *binary_address, char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4, int *hits, int *misses, int *memory_accesses){
+  char tag[cache_settings.tag_bits];
+  char index[cache_settings.set_index_bits];
+  char offset[cache_settings.block_offset_bits];
+  char *copy;
+  copy = binary_address;
+  strncpy(tag, copy, cache_settings.tag_bits);
+  strncpy(index, copy, cache_settings.set_index_bits);
+  strncpy(offset, copy, cache_settings.block_offset_bits);
+  if (strcmp(cache_settings.cache_type, "u") == 0 && (strcmp(cache_settings.write_style, "wt") == 0 && strcmp(cache_settings.allocation, "wna") == 0)){
+    uni_write_through_no_allocate(tag, index, offset, reference, ptr1, ptr2, ptr3, ptr4, hits, misses, memory_accesses);
+  } else{
+    
+  }
+}
+
+
+void uni_write_through_no_allocate(char *tag, char *index, char *offset, char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4, int *hits, int *misses, int *memory_accesses){
+  int numeric_reference;
+  numeric_reference = atoi(reference);
+  int decimal_set_index;
+  decimal_set_index = binary_to_decimal(index);
+  if (cache_settings.num_lines == 1){
+    if (ptr1[decimal_set_index].line1.valid_bit == 0 && numeric_reference == 0){
+      (*misses)++;
+      (*memory_accesses)++;
+      ptr1[decimal_set_index].line1.cache_address.tag = tag;
+      ptr1[decimal_set_index].line1.valid_bit = 1;
+    //} else if ()
+  }
+
+} 
+
+
+int binary_to_decimal(char *index){
+  int sum = 0;
+  int i;
+  for (i=0; i<strlen(index); i++){
+    if (index[i] == '1'){
+      sum += (int)pow(2, (int)strlen(index) - 1 - i); 
+    }
+  }
+  return sum;
+  //printf("%d\n", *decimal_set_index);
+}
+
+
+
+
+void search_split_cache(char *tag, char *index, char *offset){
+  printf("work in progress\n");
 }
