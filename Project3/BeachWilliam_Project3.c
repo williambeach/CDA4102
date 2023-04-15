@@ -56,9 +56,9 @@ struct settings{
 struct line{
   unsigned int valid_bit;
   unsigned int dirty_bit;
-  char tag[50];
-  char set[50];
-  char offset[50];
+  char tag[100];
+  char set[100];
+  char offset[100];
 };
 
 struct set_direct_mapped{
@@ -91,11 +91,11 @@ void parse_command_line(int argc, char *argv[]);
 void cacheType(char *arr);
 void writeType(char *arr);
 void allocationType(char *arr);
-void initialize_cache(struct set_direct_mapped arr1[], struct set_2_way arr2[], struct set_3_way arr3[], struct set_4_way arr4[]);
-void parse_trace_line(struct set_direct_mapped arr1[], struct set_2_way arr2[], struct set_3_way arr3[], struct set_4_way arr4[], char tag[], char index[], char offset[]);
+void initialize_cache(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4);
+void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4, char tag[], char index[], char offset[]);
 void hex_to_binary(char *hex, char *binary_address);
-void binary_to_cache_bits(char *binary_address, char *reference, struct set_direct_mapped arr1[], struct set_2_way arr2[], struct set_3_way arr3[], struct set_4_way arr4[], char tag[], char index[], char offset[], int *hits, int *misses, int *memory_accesses);
-void uni_write_through_no_allocate(char tag[], char index[], char offset[], char *reference, struct set_direct_mapped arr1[], struct set_2_way arr2[], struct set_3_way arr3[], struct set_4_way arr4[], int *hits, int *misses, int *memory_accesses);
+void binary_to_cache_bits(char *binary_address, char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4, char tag[], char index[], char offset[], int *hits, int *misses, int *memory_accesses);
+void uni_write_through_no_allocate(char tag[], char index[], char offset[], char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4, int *hits, int *misses, int *memory_accesses);
 int binary_to_decimal(char *index);
 
 
@@ -108,15 +108,19 @@ int main(int argc, char *argv[]){
   cache_settings.block_offset_bits = log2(cache_settings.block_size);
   cache_settings.tag_bits = 32 - cache_settings.block_offset_bits - cache_settings.set_index_bits;
   struct set_direct_mapped set_array1[cache_settings.cache_sets];
+  struct set_direct_mapped *ptr1 = set_array1;
   struct set_2_way set_array2[cache_settings.cache_sets];
+  struct set_2_way *ptr2 = set_array2;
   struct set_3_way set_array3[cache_settings.cache_sets];
+  struct set_3_way *ptr3 = set_array3;
   struct set_4_way set_array4[cache_settings.cache_sets];
+  struct set_4_way *ptr4 = set_array4;
   char tag[cache_settings.tag_bits];
   char index[cache_settings.set_index_bits];
   char offset[cache_settings.block_offset_bits];
-  initialize_cache(set_array1, set_array2, set_array3, set_array4);
-  parse_trace_line(set_array1, set_array2, set_array3, set_array4, tag, index, offset);
-  
+  initialize_cache(ptr1, ptr2, ptr3, ptr4);
+  parse_trace_line(ptr1, ptr2, ptr3, ptr4, tag, index, offset);
+  return 0;
 }
 
 
@@ -156,34 +160,32 @@ void parse_command_line(int argc, char *argv[]){
               exit(1);
       }
     }
-    //calculate cache sets
-  
 }
 
-void initialize_cache(struct set_direct_mapped arr1[], struct set_2_way arr2[], struct set_3_way arr3[], struct set_4_way arr4[]){ 
+void initialize_cache(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4){ 
   int i;
   if (strcmp(cache_settings.cache_type, "u") == 0){
     if (cache_settings.num_lines == 1){
       for (i=0; i<cache_settings.cache_sets;i++){
-        arr1[i].line1.valid_bit = 0;
+        ptr1[i].line1.valid_bit = 0;
       }
     } else if (cache_settings.num_lines == 2){
         for (i=0; i<cache_settings.cache_sets;i++){
-          arr2[i].line1.valid_bit = 0;
-          arr2[i].line2.valid_bit = 0;
+          ptr2[i].line1.valid_bit = 0;
+          ptr2[i].line2.valid_bit = 0;
         }
     } else if (cache_settings.num_lines == 3){
         for (i=0; i<cache_settings.cache_sets;i++){
-          arr3[i].line1.valid_bit = 0;
-          arr3[i].line2.valid_bit = 0;
-          arr3[i].line3.valid_bit = 0;
+          ptr3[i].line1.valid_bit = 0;
+          ptr3[i].line2.valid_bit = 0;
+          ptr3[i].line3.valid_bit = 0;
         }
     } else if (cache_settings.num_lines == 4){
         for (i=0; i<cache_settings.cache_sets;i++){
-          arr4[i].line1.valid_bit = 0;
-          arr4[i].line2.valid_bit = 0;
-          arr4[i].line3.valid_bit = 0;
-          arr4[i].line4.valid_bit = 0;
+          ptr4[i].line1.valid_bit = 0;
+          ptr4[i].line2.valid_bit = 0;
+          ptr4[i].line3.valid_bit = 0;
+          ptr4[i].line4.valid_bit = 0;
         }
     } else {
       printf("associativity > 4\n");
@@ -231,7 +233,9 @@ void allocationType(char *arr){
     }
 }
 
-void parse_trace_line(struct set_direct_mapped arr1[], struct set_2_way arr2[], struct set_3_way arr3[], struct set_4_way arr4[], char tag[], char index[], char offset[]){
+void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4, char tag[], char index[], char offset[]){
+  double hit_rate;
+  double miss_rate;
   int *phits;
   int *pmisses;
   int *pmemory_accesses;
@@ -257,7 +261,7 @@ void parse_trace_line(struct set_direct_mapped arr1[], struct set_2_way arr2[], 
       memset(binary_address, '\0', sizeof binary_address);
       strcpy(binary_address, copy_of_binary);
     }
-    binary_to_cache_bits(binary_address, reference, arr1, arr2, arr3, arr4, tag, index, offset, phits, pmisses, pmemory_accesses);
+    binary_to_cache_bits(binary_address, reference, ptr1, ptr2, ptr3, ptr4, tag, index, offset, phits, pmisses, pmemory_accesses);
     memset(binary_address, '\0', sizeof binary_address);
     memset(copy_of_binary, '\0', sizeof copy_of_binary);
     strcpy(copy_of_binary, "00000000");
@@ -265,7 +269,9 @@ void parse_trace_line(struct set_direct_mapped arr1[], struct set_2_way arr2[], 
   printf("Hits: %d\n", *phits);
   printf("Misses: %d\n", *pmisses);
   printf("Memory Accesses: %d\n", *pmemory_accesses);
-  
+  printf("Hit Rate: %.2lf\n", (double)*phits / (*phits + *pmisses));
+  printf("Miss Rate: %.2lf\n", 1.0 - ((double)*phits / (*phits + *pmisses)));
+  fclose(trace_file);
 }
 
 void hex_to_binary(char *hex, char *binary_address){
@@ -284,39 +290,39 @@ void hex_to_binary(char *hex, char *binary_address){
   }
 }
 
-void binary_to_cache_bits(char *binary_address, char *reference, struct set_direct_mapped arr1[], struct set_2_way arr2[], struct set_3_way arr3[], struct set_4_way arr4[], char tag[], char index[], char offset[], int *hits, int *misses, int *memory_accesses){
+void binary_to_cache_bits(char *binary_address, char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4, char tag[], char index[], char offset[], int *hits, int *misses, int *memory_accesses){
   char copy[100];
   strcpy(copy, binary_address);
   strncpy(tag, copy, cache_settings.tag_bits);
   strncpy(index, copy + cache_settings.tag_bits, strlen(copy) - cache_settings.block_offset_bits - cache_settings.tag_bits);
   strncpy(offset, copy + cache_settings.tag_bits + cache_settings.set_index_bits, strlen(copy) - cache_settings.tag_bits - cache_settings.set_index_bits);
   if ((strcmp(cache_settings.cache_type, "u") == 0) && (strcmp(cache_settings.write_style, "wt") == 0) && (strcmp(cache_settings.allocation, "wna") == 0)){
-    uni_write_through_no_allocate(tag, index, offset, reference, arr1, arr2, arr3, arr4, hits, misses, memory_accesses);
+    uni_write_through_no_allocate(tag, index, offset, reference, ptr1, ptr2, ptr3, ptr4, hits, misses, memory_accesses);
   }
 }
 
-void uni_write_through_no_allocate(char tag[], char index[], char offset[], char *reference, struct set_direct_mapped arr1[], struct set_2_way arr2[], struct set_3_way arr3[], struct set_4_way arr4[], int *hits, int *misses, int *memory_accesses){
+void uni_write_through_no_allocate(char tag[], char index[], char offset[], char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4, int *hits, int *misses, int *memory_accesses){
   int numeric_reference;
   numeric_reference = atoi(reference);
   int decimal_set_index;
   decimal_set_index = binary_to_decimal(index);
   if (cache_settings.num_lines == 1){
-    if (arr1[decimal_set_index].line1.valid_bit == 0){
+    if (ptr1[decimal_set_index].line1.valid_bit == 0){
       (*misses)++;
       (*memory_accesses)++;
-      strcpy(arr1[decimal_set_index].line1.tag, tag);
-      arr1[decimal_set_index].line1.valid_bit = 1;
-    } else if (arr1[decimal_set_index].line1.valid_bit == 1 && (numeric_reference == 0 || numeric_reference == 2)){
-        if (strcmp(arr1[decimal_set_index].line1.tag, tag) == 0){
+      strcpy(ptr1[decimal_set_index].line1.tag, tag);
+      ptr1[decimal_set_index].line1.valid_bit = 1;
+    } else if (ptr1[decimal_set_index].line1.valid_bit == 1 && (numeric_reference == 0 || numeric_reference == 2)){
+        if (strcmp(ptr1[decimal_set_index].line1.tag, tag) == 0){
           (*hits)++;
         } else{
           (*misses)++;
           (*memory_accesses)++;
-          memset(arr1[decimal_set_index].line1.tag, '\0', sizeof arr1[decimal_set_index].line1.tag);
-          strcpy(arr1[decimal_set_index].line1.tag, tag);
+          memset(ptr1[decimal_set_index].line1.tag, '\0', sizeof ptr1[decimal_set_index].line1.tag);
+          strcpy(ptr1[decimal_set_index].line1.tag, tag);
         }
-    } else if (arr1[decimal_set_index].line1.valid_bit == 1 && numeric_reference == 1){
-      if (strcmp(arr1[decimal_set_index].line1.tag, tag) == 0){
+    } else if (ptr1[decimal_set_index].line1.valid_bit == 1 && numeric_reference == 1){
+      if (strcmp(ptr1[decimal_set_index].line1.tag, tag) == 0){
         (*hits)++;
         (*memory_accesses)++;
       } else{
