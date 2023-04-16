@@ -32,6 +32,8 @@ total cache size                       block size                    associativi
 type: unified/split i and d     write-back/write-through     write allocate/write no allocate
     -t [u/sid]                        -w [wb/wt]                     -a [wa/wna]
 
+example: -c 1024 -b 4 -e 1 -t u -w wt -a wna
+
 */
 
 #include <stdio.h>
@@ -93,7 +95,7 @@ void writeType(char *arr);
 void allocationType(char *arr);
 void initialize_cache(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4);
 void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4);
-void hex_to_binary(char *hex, char *binary_address);
+void hex_to_binary(char hex[], char *binary_address);
 void binary_to_cache_bits(char *binary_address, char *reference, struct set_direct_mapped set_array1[], struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4, char tag[], char index[], char offset[], int *hits, int *misses, int *memory_accesses);
 void uni_write_through_no_allocate(char tag[], char index[], char offset[], char *reference, struct set_direct_mapped set_array1[], struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4, int *hits, int *misses, int *memory_accesses);
 int binary_to_decimal(char index[]);
@@ -248,13 +250,16 @@ void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, st
   char binary_address[50] = {'\0'};
   char copy_of_binary[50] = {'0', '0', '0', '0', '0', '0', '0', '0'};
   char buffer[50];
-  char *reference;
-  char *hex;
+  char reference[50];
+  char hex[50];
   int length;
   trace_file = fopen("trace.txt", "r");
   while (fgets(buffer, sizeof(buffer), trace_file) != NULL){
-    reference = strtok(buffer, " ");
-    hex = strtok(NULL, " ");
+    if (buffer[strlen(buffer) - 1] == '\n'){
+      buffer[strlen(buffer) - 1] = '\0';
+    }
+    strncpy(reference, buffer, 1);
+    strncpy(hex, buffer + 2, strlen(buffer) - 1);
     hex_to_binary(hex, binary_address);
     if ((int)strlen(binary_address) == 24){
       strcat(copy_of_binary, binary_address);
@@ -274,15 +279,14 @@ void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, st
   fclose(trace_file);
 }
 
-void hex_to_binary(char *hex, char *binary_address){
+void hex_to_binary(char hex[], char *binary_address){
   char temp;
   char *target;
   int index;
   int i;
-  int address_bits = (strlen(hex) - 1) * 4;
   char *hex_to_binary[16] = {"0000", "0001", "0010", "0011", "0100", "0101", "0110", "0111", "1000", "1001", "1010", "1011", "1100", "1101", "1110", "1111"};
   char hex_numbers[] = "0123456789abcdef";
-  for (i=0;i<strlen(hex)-1;i++){
+  for (i=0;i<strlen(hex);i++){
     temp = hex[i];
     target = strchr(hex_numbers, temp);
     index = (int)(target - hex_numbers);
