@@ -26,8 +26,8 @@ CDA4102 - Project 3 - Cache Memory in C
 
 /*
 
-total cache size                       block size                    associativity  
--c <cache size>                     -b <block size>              -e <number of lines>   //up to 2-way
+//total cache size                       block size                    associativity  
+-c <cache size>                     -b <block size>              -e <number of lines>   up to 2-way
 
 type: unified/split i and d     write-back/write-through     write allocate/write no allocate
     -t [u/sid]                        -w [wb/wt]                     -a [wa/wna]
@@ -207,8 +207,8 @@ void allocationType(char *arr){
 }
 
 void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2){
-  char tag[100];
-  char index[100];
+  char tag[500];
+  char index[500];
   double hit_rate;
   double miss_rate;
   int *phits;
@@ -241,6 +241,7 @@ void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2){
     }
     binary_to_cache_bits(binary_address, reference, ptr1, ptr2, tag, index, phits, pmisses, pmemory_accesses);
     memset(index, '\0', sizeof index);
+    memset(tag, '\0', sizeof tag);
     memset(binary_address, '\0', sizeof binary_address);
     memset(binary_address_of_binary, '\0', sizeof binary_address_of_binary);
     strcpy(binary_address_of_binary, "00000000");
@@ -280,13 +281,6 @@ void binary_to_cache_bits(char *binary_address, char *reference, struct set_dire
   exit(1);
 }
 }
-
-
-
-
-
-
-
 
 void uni_write_through_no_allocate(char tag[], char index[], char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, int *hits, int *misses, int *memory_accesses){
   int numeric_reference;
