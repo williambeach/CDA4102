@@ -27,12 +27,14 @@ CDA4102 - Project 3 - Cache Memory in C
 /*
 
 total cache size                       block size                    associativity  
--c <cache size>                     -b <block size>              -e <number of lines>   //up to 4-way
+-c <cache size>                     -b <block size>              -e <number of lines>   //up to 2-way
 
 type: unified/split i and d     write-back/write-through     write allocate/write no allocate
     -t [u/sid]                        -w [wb/wt]                     -a [wa/wna]
 
-example: -c 1024 -b 4 -e 1 -t u -w wt -a wna
+Example: -c 1024 -b 4 -e 1 -t u -w wt -a wna
+
+This program uses LRU algorithm to replace cache blocks in both write back and write through in 2-way associativity
 
 */
 
@@ -58,9 +60,9 @@ struct settings{
 struct line{
   unsigned int valid_bit;
   unsigned int dirty_bit;
-  char tag[100];
-  char set[100];
-  char offset[100];
+  unsigned int LRU;
+  char tag[1000];
+  char set[500];
 };
 
 struct set_direct_mapped{
@@ -72,32 +74,18 @@ struct set_2_way{
   struct line line2;
 };
 
-struct set_3_way{
-  struct line line1;
-  struct line line2;
-  struct line line3;
-};
-
-struct set_4_way{
-  struct line line1;
-  struct line line2;
-  struct line line3;
-  struct line line4;
-};
-
-
-
 FILE *trace_file;
 
 void parse_command_line(int argc, char *argv[]);
 void cacheType(char *arr);
 void writeType(char *arr);
 void allocationType(char *arr);
-void initialize_cache(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4);
-void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4);
+void initialize_cache(struct set_direct_mapped *ptr1, struct set_2_way *ptr2);
+void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2);
 void hex_to_binary(char hex[], char *binary_address);
-void binary_to_cache_bits(char *binary_address, char *reference, struct set_direct_mapped set_array1[], struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4, char tag[], char index[], char offset[], int *hits, int *misses, int *memory_accesses);
-void uni_write_through_no_allocate(char tag[], char index[], char offset[], char *reference, struct set_direct_mapped set_array1[], struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4, int *hits, int *misses, int *memory_accesses);
+void binary_to_cache_bits(char *binary_address, char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, char tag[], char index[], int *hits, int *misses, int *memory_accesses);
+void uni_write_through_no_allocate(char tag[], char index[], char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, int *hits, int *misses, int *memory_accesses);
+void uni_write_back_with_allocation(char tag[], char index[], char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, int *hits, int *misses, int *memory_accesses);
 int binary_to_decimal(char index[]);
 
 
@@ -113,12 +101,8 @@ int main(int argc, char *argv[]){
   struct set_direct_mapped *ptr1 = set_array1;
   struct set_2_way set_array2[cache_settings.cache_sets];
   struct set_2_way *ptr2 = set_array2;
-  struct set_3_way set_array3[cache_settings.cache_sets];
-  struct set_3_way *ptr3 = set_array3;
-  struct set_4_way set_array4[cache_settings.cache_sets];
-  struct set_4_way *ptr4 = set_array4;
-  initialize_cache(ptr1, ptr2, ptr3, ptr4);
-  parse_trace_line(ptr1, ptr2, ptr3, ptr4);
+  initialize_cache(ptr1, ptr2);
+  parse_trace_line(ptr1, ptr2);
   return 0;
 }
 
@@ -161,33 +145,23 @@ void parse_command_line(int argc, char *argv[]){
     }
 }
 
-void initialize_cache(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4){ 
+void initialize_cache(struct set_direct_mapped *ptr1, struct set_2_way *ptr2){ 
   int i;
   if (strcmp(cache_settings.cache_type, "u") == 0){
     if (cache_settings.num_lines == 1){
       for (i=0; i<cache_settings.cache_sets;i++){
         ptr1[i].line1.valid_bit = 0;
+        ptr1[i].line1.dirty_bit = 0;
       }
     } else if (cache_settings.num_lines == 2){
         for (i=0; i<cache_settings.cache_sets;i++){
           ptr2[i].line1.valid_bit = 0;
           ptr2[i].line2.valid_bit = 0;
-        }
-    } else if (cache_settings.num_lines == 3){
-        for (i=0; i<cache_settings.cache_sets;i++){
-          ptr3[i].line1.valid_bit = 0;
-          ptr3[i].line2.valid_bit = 0;
-          ptr3[i].line3.valid_bit = 0;
-        }
-    } else if (cache_settings.num_lines == 4){
-        for (i=0; i<cache_settings.cache_sets;i++){
-          ptr4[i].line1.valid_bit = 0;
-          ptr4[i].line2.valid_bit = 0;
-          ptr4[i].line3.valid_bit = 0;
-          ptr4[i].line4.valid_bit = 0;
+          ptr2[i].line1.dirty_bit = 0;
+          ptr2[i].line2.dirty_bit = 0;
         }
     } else {
-      printf("associativity > 4\n");
+      printf("associativity > 2\n");
       printf("exiting program\n");
       exit(1);
     }
@@ -232,10 +206,9 @@ void allocationType(char *arr){
     }
 }
 
-void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4){
+void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2){
   char tag[cache_settings.tag_bits];
   char index[cache_settings.set_index_bits];
-  char offset[cache_settings.block_offset_bits];
   double hit_rate;
   double miss_rate;
   int *phits;
@@ -266,7 +239,7 @@ void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2, st
       memset(binary_address, '\0', sizeof binary_address);
       strcpy(binary_address, copy_of_binary);
     }
-    binary_to_cache_bits(binary_address, reference, ptr1, ptr2, ptr3, ptr4, tag, index, offset, phits, pmisses, pmemory_accesses);
+    binary_to_cache_bits(binary_address, reference, ptr1, ptr2, tag, index, phits, pmisses, pmemory_accesses);
     memset(binary_address, '\0', sizeof binary_address);
     memset(copy_of_binary, '\0', sizeof copy_of_binary);
     strcpy(copy_of_binary, "00000000");
@@ -294,18 +267,29 @@ void hex_to_binary(char hex[], char *binary_address){
   }
 }
 
-void binary_to_cache_bits(char *binary_address, char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4, char tag[], char index[], char offset[], int *hits, int *misses, int *memory_accesses){
+void binary_to_cache_bits(char *binary_address, char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, char tag[], char index[], int *hits, int *misses, int *memory_accesses){
   char copy[100];
   strcpy(copy, binary_address);
   strncpy(tag, copy, cache_settings.tag_bits);
   strncpy(index, copy + cache_settings.tag_bits, strlen(copy) - 1 - cache_settings.block_offset_bits - cache_settings.tag_bits);
-  strncpy(offset, copy + cache_settings.tag_bits + cache_settings.set_index_bits, strlen(copy) - cache_settings.tag_bits - cache_settings.set_index_bits);
   if ((strcmp(cache_settings.cache_type, "u") == 0) && (strcmp(cache_settings.write_style, "wt") == 0) && (strcmp(cache_settings.allocation, "wna") == 0)){
-    uni_write_through_no_allocate(tag, index, offset, reference, ptr1, ptr2, ptr3, ptr4, hits, misses, memory_accesses);
-  }
+    uni_write_through_no_allocate(tag, index, reference, ptr1, ptr2, hits, misses, memory_accesses);
+  } else if ((strcmp(cache_settings.cache_type, "u") == 0) && (strcmp(cache_settings.write_style, "wb") == 0) && strcmp(cache_settings.allocation, "wa") == 0){
+    uni_write_back_with_allocation(tag, index, reference, ptr1, ptr2, hits, misses, memory_accesses);
+  } else{
+  printf("Invalid command selection combinations, exiting program");
+  exit(1);
+}
 }
 
-void uni_write_through_no_allocate(char tag[], char index[], char offset[], char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, struct set_3_way *ptr3, struct set_4_way *ptr4, int *hits, int *misses, int *memory_accesses){
+
+
+
+
+
+
+
+void uni_write_through_no_allocate(char tag[], char index[], char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, int *hits, int *misses, int *memory_accesses){
   int numeric_reference;
   numeric_reference = atoi(reference);
   int decimal_set_index;
@@ -322,7 +306,6 @@ void uni_write_through_no_allocate(char tag[], char index[], char offset[], char
         } else{
           (*misses)++;
           (*memory_accesses)++;
-          memset(ptr1[decimal_set_index].line1.tag, '\0', sizeof ptr1[decimal_set_index].line1.tag);
           strcpy(ptr1[decimal_set_index].line1.tag, tag);
         }
     } else if (ptr1[decimal_set_index].line1.valid_bit == 1 && numeric_reference == 1){
@@ -334,9 +317,156 @@ void uni_write_through_no_allocate(char tag[], char index[], char offset[], char
         (*memory_accesses)++;
       }
     }
-    
+  } else if (cache_settings.num_lines == 2){
+    if ((ptr2[decimal_set_index].line1.valid_bit == 0 && ptr2[decimal_set_index].line2.valid_bit == 0)){
+      (*misses)++;
+      (*memory_accesses)++;
+      strcpy(ptr2[decimal_set_index].line1.tag, tag);
+      ptr2[decimal_set_index].line1.valid_bit = 1;
+      ptr2[decimal_set_index].line1.LRU = 0;
+      ptr2[decimal_set_index].line2.LRU = 1;
+    } else if ((ptr2[decimal_set_index].line1.valid_bit == 1 && ptr2[decimal_set_index].line2.valid_bit == 0) && (numeric_reference == 0 || numeric_reference == 2)){
+      if (strcmp(ptr2[decimal_set_index].line1.tag, tag) == 0){
+        (*hits)++;
+        ptr2[decimal_set_index].line1.LRU = 0;
+        ptr2[decimal_set_index].line2.LRU = 1;
+      } else{
+        strcpy(ptr2[decimal_set_index].line2.tag, tag);
+        (*misses)++;
+        (*memory_accesses)++;
+        ptr2[decimal_set_index].line2.valid_bit = 1;
+        ptr2[decimal_set_index].line1.LRU = 1;
+        ptr2[decimal_set_index].line2.LRU = 0;
+      }
+    } else if ((ptr2[decimal_set_index].line1.valid_bit == 1 && ptr2[decimal_set_index].line2.valid_bit == 0) && (numeric_reference == 1)){
+      if (strcmp(ptr2[decimal_set_index].line1.tag, tag) == 0){
+        (*hits)++;
+        (*memory_accesses)++;
+        ptr2[decimal_set_index].line1.LRU = 0;
+        ptr2[decimal_set_index].line2.LRU = 1;
+      } else{
+        (*misses)++;
+        (*memory_accesses)++;
+      } 
+    } else if ((ptr2[decimal_set_index].line1.valid_bit == 0 && ptr2[decimal_set_index].line2.valid_bit == 1) && (numeric_reference == 0 || numeric_reference == 2)){
+      if (strcmp(ptr2[decimal_set_index].line2.tag, tag) == 0){
+        (*hits)++;
+        ptr2[decimal_set_index].line1.LRU = 1;
+        ptr2[decimal_set_index].line2.LRU = 0;
+      } else{
+        (*misses)++;
+        (*memory_accesses)++;
+        strcpy(ptr2[decimal_set_index].line1.tag, tag);
+        ptr2[decimal_set_index].line1.valid_bit = 1;
+        ptr2[decimal_set_index].line1.LRU = 0;
+        ptr2[decimal_set_index].line2.LRU = 1;
+      }
+    } else if ((ptr2[decimal_set_index].line1.valid_bit == 0 && ptr2[decimal_set_index].line2.valid_bit == 1) && (numeric_reference == 1)){
+      if (strcmp(ptr2[decimal_set_index].line2.tag, tag) == 0){
+        (*hits)++;
+        (*memory_accesses)++;
+        ptr2[decimal_set_index].line1.LRU = 1;
+        ptr2[decimal_set_index].line2.LRU = 0;
+      } else{
+        (misses)++;
+        (*memory_accesses)++;
+      }
+  } else if ((ptr2[decimal_set_index].line1.valid_bit == 1 && ptr2[decimal_set_index].line2.valid_bit == 1) && (numeric_reference == 0 || numeric_reference == 2)){
+      if (strcmp(ptr2[decimal_set_index].line1.tag, tag) == 0){
+        (*hits)++;
+        ptr2[decimal_set_index].line1.LRU = 0;
+        ptr2[decimal_set_index].line2.LRU = 1;
+      } else if (strcmp(ptr2[decimal_set_index].line2.tag, tag) == 0){
+        (*hits)++;
+        ptr2[decimal_set_index].line1.LRU = 1;
+        ptr2[decimal_set_index].line2.LRU = 0;
+      } else{
+        (*misses)++;
+        (*memory_accesses)++;
+        if (ptr2[decimal_set_index].line1.LRU == 0){
+          strcpy(ptr2[decimal_set_index].line2.tag, tag);
+          ptr2[decimal_set_index].line2.LRU = 0;
+          ptr2[decimal_set_index].line1.LRU = 1;
+        } else{
+          strcpy(ptr2[decimal_set_index].line1.tag, tag);
+          ptr2[decimal_set_index].line2.LRU = 1;
+          ptr2[decimal_set_index].line1.LRU = 0;
+        }
+      }
+    } else if ((ptr2[decimal_set_index].line1.valid_bit == 1 && ptr2[decimal_set_index].line2.valid_bit == 1) && (numeric_reference == 1)){
+      if (strcmp(ptr2[decimal_set_index].line1.tag, tag) == 0){
+        (*hits)++;
+        ptr2[decimal_set_index].line1.LRU = 0;
+        ptr2[decimal_set_index].line2.LRU = 1;
+      } else if (strcmp(ptr2[decimal_set_index].line2.tag, tag) == 0){
+        (*hits)++;
+        ptr2[decimal_set_index].line1.LRU = 1;
+        ptr2[decimal_set_index].line2.LRU = 0;
+      } else{
+        (*misses)++;
+        (*memory_accesses)++;
+        if (ptr2[decimal_set_index].line1.LRU == 0){
+          strcpy(ptr2[decimal_set_index].line2.tag, tag);
+          ptr2[decimal_set_index].line2.LRU = 0;
+          ptr2[decimal_set_index].line1.LRU = 1;
+        } else{
+          strcpy(ptr2[decimal_set_index].line1.tag, tag);
+          ptr2[decimal_set_index].line2.LRU = 1;
+          ptr2[decimal_set_index].line1.LRU = 0;
+        }
+      }
+    }
   }
 }
+
+void uni_write_back_with_allocation(char tag[], char index[], char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, int *hits, int *misses, int *memory_accesses){
+  int numeric_reference;
+  numeric_reference = atoi(reference);
+  int decimal_set_index;
+  decimal_set_index = binary_to_decimal(index);
+  if (cache_settings.num_lines == 1){
+    if (ptr1[decimal_set_index].line1.valid_bit == 0){
+      if (numeric_reference == 1){
+        strcpy(ptr1[decimal_set_index].line1.tag, tag);
+        ptr1[decimal_set_index].line1.dirty_bit = 1;
+      } else{
+        (*misses)++;
+        (*memory_accesses)++;
+        strcpy(ptr1[decimal_set_index].line1.tag, tag);
+      }
+    ptr1[decimal_set_index].line1.valid_bit = 1;
+    } else if (ptr1[decimal_set_index].line1.valid_bit == 1 && (numeric_reference == 0 || numeric_reference == 2)){
+        if (strcmp(ptr1[decimal_set_index].line1.tag, tag) == 0){
+          (*hits)++;
+        } else if (strcmp(ptr1[decimal_set_index].line1.tag, tag) != 0 && ptr1[decimal_set_index].line1.dirty_bit == 1){
+          (*memory_accesses)++;
+          strcpy(ptr1[decimal_set_index].line1.tag, tag);
+          ptr1[decimal_set_index].line1.dirty_bit = 0;
+        } else if (strcmp(ptr1[decimal_set_index].line1.tag, tag) != 0 && ptr1[decimal_set_index].line1.dirty_bit == 0)
+          (*misses)++;
+          (*memory_accesses)++;
+          strcpy(ptr1[decimal_set_index].line1.tag, tag);
+        }
+    } else if (ptr1[decimal_set_index].line1.valid_bit == 1 && numeric_reference == 1){
+      if (strcmp(ptr1[decimal_set_index].line1.tag, tag) == 0){
+        (*hits)++;
+        ptr1[decimal_set_index].line1.dirty_bit = 1;
+      } else{
+        if (ptr1[decimal_set_index].line1.dirty_bit == 0){
+          strcpy(ptr1[decimal_set_index].line1.tag, tag);
+          ptr1[decimal_set_index].line1.dirty_bit = 1;
+          (*misses)++;
+          (*memory_accesses)++;
+        }else{
+          (*memory_accesses)++;
+          strcpy(ptr1[decimal_set_index].line1.tag, tag);
+          ptr1[decimal_set_index].line1.dirty_bit = 1;
+        }
+      }
+    }
+  }
+
+
 
 int binary_to_decimal(char index[]){
   int sum = 0;
