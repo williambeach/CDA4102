@@ -207,8 +207,8 @@ void allocationType(char *arr){
 }
 
 void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2){
-  char tag[cache_settings.tag_bits];
-  char index[cache_settings.set_index_bits];
+  char tag[100];
+  char index[100];
   double hit_rate;
   double miss_rate;
   int *phits;
@@ -221,7 +221,7 @@ void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2){
   pmisses = &misses;
   pmemory_accesses = &memory_accesses;
   char binary_address[50] = {'\0'};
-  char copy_of_binary[50] = {'0', '0', '0', '0', '0', '0', '0', '0'};
+  char binary_address_of_binary[50] = {'0', '0', '0', '0', '0', '0', '0', '0'};
   char buffer[50];
   char reference[50];
   char hex[50];
@@ -235,14 +235,15 @@ void parse_trace_line(struct set_direct_mapped *ptr1, struct set_2_way *ptr2){
     strncpy(hex, buffer + 2, strlen(buffer) - 1);
     hex_to_binary(hex, binary_address);
     if ((int)strlen(binary_address) == 24){
-      strcat(copy_of_binary, binary_address);
+      strcat(binary_address_of_binary, binary_address);
       memset(binary_address, '\0', sizeof binary_address);
-      strcpy(binary_address, copy_of_binary);
+      strcpy(binary_address, binary_address_of_binary);
     }
     binary_to_cache_bits(binary_address, reference, ptr1, ptr2, tag, index, phits, pmisses, pmemory_accesses);
+    memset(index, '\0', sizeof index);
     memset(binary_address, '\0', sizeof binary_address);
-    memset(copy_of_binary, '\0', sizeof copy_of_binary);
-    strcpy(copy_of_binary, "00000000");
+    memset(binary_address_of_binary, '\0', sizeof binary_address_of_binary);
+    strcpy(binary_address_of_binary, "00000000");
   }
   printf("Hits: %d\n", *phits);
   printf("Misses: %d\n", *pmisses);
@@ -268,10 +269,8 @@ void hex_to_binary(char hex[], char *binary_address){
 }
 
 void binary_to_cache_bits(char *binary_address, char *reference, struct set_direct_mapped *ptr1, struct set_2_way *ptr2, char tag[], char index[], int *hits, int *misses, int *memory_accesses){
-  char copy[100];
-  strcpy(copy, binary_address);
-  strncpy(tag, copy, cache_settings.tag_bits);
-  strncpy(index, copy + cache_settings.tag_bits, strlen(copy) - 1 - cache_settings.block_offset_bits - cache_settings.tag_bits);
+  strncpy(tag, binary_address, cache_settings.tag_bits);
+  strncpy(index, binary_address + cache_settings.tag_bits, strlen(binary_address) - cache_settings.block_offset_bits - cache_settings.tag_bits);
   if ((strcmp(cache_settings.cache_type, "u") == 0) && (strcmp(cache_settings.write_style, "wt") == 0) && (strcmp(cache_settings.allocation, "wna") == 0)){
     uni_write_through_no_allocate(tag, index, reference, ptr1, ptr2, hits, misses, memory_accesses);
   } else if ((strcmp(cache_settings.cache_type, "u") == 0) && (strcmp(cache_settings.write_style, "wb") == 0) && strcmp(cache_settings.allocation, "wa") == 0){
@@ -427,6 +426,8 @@ void uni_write_back_with_allocation(char tag[], char index[], char *reference, s
   if (cache_settings.num_lines == 1){
     if (ptr1[decimal_set_index].line1.valid_bit == 0){
       if (numeric_reference == 1){
+        (*misses)++;
+        (*memory_accesses)++;
         strcpy(ptr1[decimal_set_index].line1.tag, tag);
         ptr1[decimal_set_index].line1.dirty_bit = 1;
       } else{
@@ -439,34 +440,157 @@ void uni_write_back_with_allocation(char tag[], char index[], char *reference, s
         if (strcmp(ptr1[decimal_set_index].line1.tag, tag) == 0){
           (*hits)++;
         } else if (strcmp(ptr1[decimal_set_index].line1.tag, tag) != 0 && ptr1[decimal_set_index].line1.dirty_bit == 1){
+          (*misses)++;
           (*memory_accesses)++;
           strcpy(ptr1[decimal_set_index].line1.tag, tag);
           ptr1[decimal_set_index].line1.dirty_bit = 0;
-        } else if (strcmp(ptr1[decimal_set_index].line1.tag, tag) != 0 && ptr1[decimal_set_index].line1.dirty_bit == 0)
+        } else if (strcmp(ptr1[decimal_set_index].line1.tag, tag) != 0 && ptr1[decimal_set_index].line1.dirty_bit == 0){
           (*misses)++;
           (*memory_accesses)++;
           strcpy(ptr1[decimal_set_index].line1.tag, tag);
         }
-    } else if (ptr1[decimal_set_index].line1.valid_bit == 1 && numeric_reference == 1){
-      if (strcmp(ptr1[decimal_set_index].line1.tag, tag) == 0){
-        (*hits)++;
-        ptr1[decimal_set_index].line1.dirty_bit = 1;
-      } else{
-        if (ptr1[decimal_set_index].line1.dirty_bit == 0){
-          strcpy(ptr1[decimal_set_index].line1.tag, tag);
-          ptr1[decimal_set_index].line1.dirty_bit = 1;
-          (*misses)++;
-          (*memory_accesses)++;
+        } else if (ptr1[decimal_set_index].line1.valid_bit == 1 && numeric_reference == 1){
+          if (strcmp(ptr1[decimal_set_index].line1.tag, tag) == 0){
+            (*hits)++;
+            ptr1[decimal_set_index].line1.dirty_bit = 1;
+        } else{
+            if (ptr1[decimal_set_index].line1.dirty_bit == 0){
+              strcpy(ptr1[decimal_set_index].line1.tag, tag);
+              ptr1[decimal_set_index].line1.dirty_bit = 1;
+              (*misses)++;
+              (*memory_accesses)++;
         }else{
+          (*misses)++;
           (*memory_accesses)++;
           strcpy(ptr1[decimal_set_index].line1.tag, tag);
           ptr1[decimal_set_index].line1.dirty_bit = 1;
         }
       }
     }
+  } else if (cache_settings.num_lines == 2){
+    if ((ptr2[decimal_set_index].line1.valid_bit == 0 && ptr2[decimal_set_index].line2.valid_bit == 0)){
+      if (numeric_reference == 1){
+        (*misses)++;
+        (*memory_accesses)++;
+        strcpy(ptr2[decimal_set_index].line1.tag, tag);
+        ptr2[decimal_set_index].line1.dirty_bit = 1;
+        ptr2[decimal_set_index].line1.valid_bit = 1;
+        ptr2[decimal_set_index].line1.LRU = 0;
+        ptr2[decimal_set_index].line2.LRU = 1;
+      } else {
+          (*misses)++;
+          (*memory_accesses)++;
+          strcpy(ptr2[decimal_set_index].line1.tag, tag);
+          ptr2[decimal_set_index].line1.valid_bit = 1;
+          ptr2[decimal_set_index].line1.LRU = 0;
+          ptr2[decimal_set_index].line2.LRU = 1;
+      }
+    } else if ((ptr2[decimal_set_index].line1.valid_bit == 1 && ptr2[decimal_set_index].line2.valid_bit == 0) && (numeric_reference == 0 || numeric_reference == 2)){
+      if (strcmp(ptr2[decimal_set_index].line1.tag, tag) == 0){
+        (*hits)++;
+        ptr2[decimal_set_index].line1.LRU = 0;
+        ptr2[decimal_set_index].line2.LRU = 1;
+      } else{
+          strcpy(ptr2[decimal_set_index].line2.tag, tag);
+          (*misses)++;
+          (*memory_accesses)++;
+          ptr2[decimal_set_index].line2.valid_bit = 1;
+          ptr2[decimal_set_index].line1.LRU = 1;
+          ptr2[decimal_set_index].line2.LRU = 0;
+      } 
+    } else if ((ptr2[decimal_set_index].line1.valid_bit == 1 && ptr2[decimal_set_index].line2.valid_bit == 0) && (numeric_reference == 1)){
+      if (strcmp(ptr2[decimal_set_index].line1.tag, tag) == 0){
+        (*hits)++;
+        ptr2[decimal_set_index].line1.dirty_bit = 1;
+        ptr2[decimal_set_index].line1.LRU = 0;
+        ptr2[decimal_set_index].line2.LRU = 1;
+      } else{
+        strcpy(ptr2[decimal_set_index].line2.tag, tag);
+        (*misses)++;
+        (*memory_accesses)++;
+        ptr2[decimal_set_index].line2.dirty_bit = 1;
+        ptr2[decimal_set_index].line2.valid_bit = 1;
+      } 
+    } else if ((ptr2[decimal_set_index].line1.valid_bit == 0 && ptr2[decimal_set_index].line2.valid_bit == 1) && (numeric_reference == 0 || numeric_reference == 2)){
+      if (strcmp(ptr2[decimal_set_index].line2.tag, tag) == 0){
+        (*hits)++;
+        ptr2[decimal_set_index].line2.dirty_bit = 1;
+        ptr2[decimal_set_index].line1.LRU = 1;
+        ptr2[decimal_set_index].line2.LRU = 0;
+      } else{
+        (*misses)++;
+        (*memory_accesses)++;
+        strcpy(ptr2[decimal_set_index].line1.tag, tag);
+        ptr2[decimal_set_index].line1.valid_bit = 1;
+        ptr2[decimal_set_index].line1.LRU = 0;
+        ptr2[decimal_set_index].line2.LRU = 1;
+      }
+    } else if ((ptr2[decimal_set_index].line1.valid_bit == 0 && ptr2[decimal_set_index].line2.valid_bit == 1) && (numeric_reference == 1)){
+      if (strcmp(ptr2[decimal_set_index].line2.tag, tag) == 0){
+        (*hits)++;
+        ptr2[decimal_set_index].line2.dirty_bit = 1;
+        ptr2[decimal_set_index].line1.LRU = 1;
+        ptr2[decimal_set_index].line2.LRU = 0;
+      } else{
+        (misses)++;
+        (*memory_accesses)++;
+        strcpy(ptr2[decimal_set_index].line1.tag, tag);
+        ptr2[decimal_set_index].line1.dirty_bit = 1;
+        ptr2[decimal_set_index].line1.valid_bit = 1;
+        ptr2[decimal_set_index].line1.LRU = 0;
+        ptr2[decimal_set_index].line2.LRU = 1;
+      }
+  } else if ((ptr2[decimal_set_index].line1.valid_bit == 1 && ptr2[decimal_set_index].line2.valid_bit == 1) && (numeric_reference == 0 || numeric_reference == 2)){
+      if (strcmp(ptr2[decimal_set_index].line1.tag, tag) == 0){
+        (*hits)++;
+        ptr2[decimal_set_index].line1.LRU = 0;
+        ptr2[decimal_set_index].line2.LRU = 1;
+      } else if (strcmp(ptr2[decimal_set_index].line2.tag, tag) == 0){
+        (*hits)++;
+        ptr2[decimal_set_index].line1.LRU = 1;
+        ptr2[decimal_set_index].line2.LRU = 0;
+      } else{
+        (*misses)++;
+        (*memory_accesses)++;
+        if (ptr2[decimal_set_index].line1.LRU == 0){
+          strcpy(ptr2[decimal_set_index].line2.tag, tag);
+          ptr2[decimal_set_index].line2.LRU = 0;
+          ptr2[decimal_set_index].line1.LRU = 1;
+        } else{
+          strcpy(ptr2[decimal_set_index].line1.tag, tag);
+          ptr2[decimal_set_index].line2.LRU = 1;
+          ptr2[decimal_set_index].line1.LRU = 0;
+        }
+      }
+    } else if ((ptr2[decimal_set_index].line1.valid_bit == 1 && ptr2[decimal_set_index].line2.valid_bit == 1) && (numeric_reference == 1)){
+      if (strcmp(ptr2[decimal_set_index].line1.tag, tag) == 0){
+        (*hits)++;
+        ptr2[decimal_set_index].line1.LRU = 0;
+        ptr2[decimal_set_index].line2.LRU = 1;
+        ptr2[decimal_set_index].line1.dirty_bit = 1;
+      } else if (strcmp(ptr2[decimal_set_index].line2.tag, tag) == 0){
+        (*hits)++;
+        ptr2[decimal_set_index].line1.LRU = 1;
+        ptr2[decimal_set_index].line2.LRU = 0;
+        ptr2[decimal_set_index].line2.dirty_bit = 1;
+      } else{
+        (*misses)++;
+        (*memory_accesses)++;
+        if (ptr2[decimal_set_index].line1.LRU == 0){
+          strcpy(ptr2[decimal_set_index].line2.tag, tag);
+          ptr2[decimal_set_index].line2.LRU = 0;
+          ptr2[decimal_set_index].line1.LRU = 1;
+          ptr2[decimal_set_index].line2.dirty_bit = 1;
+        } else{
+          strcpy(ptr2[decimal_set_index].line1.tag, tag);
+          ptr2[decimal_set_index].line2.LRU = 1;
+          ptr2[decimal_set_index].line1.LRU = 0;
+          ptr2[decimal_set_index].line1.dirty_bit = 1;
+        }
+      }
+    }
   }
-
-
+}
 
 int binary_to_decimal(char index[]){
   int sum = 0;
